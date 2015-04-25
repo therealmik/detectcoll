@@ -7,13 +7,11 @@ const (
 	sha1_rc4 uint32 = 3395469782
 )
 
+type sha1_ihv [5]uint32
+
 type SHA1 struct {
 	ml  uint64
-	a   uint32
-	b   uint32
-	c   uint32
-	d   uint32
-	e   uint32
+	ihv sha1_ihv
 	buf []byte
 }
 
@@ -33,12 +31,8 @@ func append_u32be(ret []byte, n uint32) []byte {
 
 func NewSHA1() *SHA1 {
 	return &SHA1{
-		ml: 0,
-		a:  0x67452301,
-		b:  0xEFCDAB89,
-		c:  0x98BADCFE,
-		d:  0x10325476,
-		e:  0xC3D2E1F0,
+		ml:  0,
+		ihv: [5]uint32{0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0},
 	}
 }
 
@@ -82,11 +76,9 @@ func (s *SHA1) Sum(ret []byte) []byte {
 		t.process_mb(mb)
 	}
 
-	ret = append_u32be(ret, t.a)
-	ret = append_u32be(ret, t.b)
-	ret = append_u32be(ret, t.c)
-	ret = append_u32be(ret, t.d)
-	ret = append_u32be(ret, t.e)
+	for i := 0; i < 5; i++ {
+		ret = append_u32be(ret, t.ihv[i])
+	}
 
 	return ret
 }
@@ -125,11 +117,11 @@ func create_sha1_mb(data []byte) *sha1_mb {
 
 func (s *SHA1) process_mb(mb *sha1_mb) {
 	var i int
-	a := s.a
-	b := s.b
-	c := s.c
-	d := s.d
-	e := s.e
+	a := s.ihv[0]
+	b := s.ihv[1]
+	c := s.ihv[2]
+	d := s.ihv[3]
+	e := s.ihv[4]
 
 	chug := func(f, k uint32) {
 		temp := rotl32(a, 5) + f + e + k + mb[i]
@@ -160,9 +152,9 @@ func (s *SHA1) process_mb(mb *sha1_mb) {
 		chug(f, sha1_rc4)
 	}
 
-	s.a += a
-	s.b += b
-	s.c += c
-	s.d += d
-	s.e += e
+	s.ihv[0] += a
+	s.ihv[1] += b
+	s.ihv[2] += c
+	s.ihv[3] += d
+	s.ihv[4] += e
 }
