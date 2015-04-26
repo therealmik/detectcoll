@@ -190,22 +190,25 @@ func (s *MD5) process_mb(mb *md5_mb) {
 	s.ihv[3] += d
 }
 
-func unprocess_mb(delta *md5_delta, mb md5_mb, ws md5_ihv) md5_ihv {
-	i := delta.round
+func apply_md5_delta(delta md5_delta, message_block md5_mb, working_state *md5_ihv) md5_ihv {
+	x := unprocess_md5_block(delta.round, &message_block, working_state)
+	y := process_md5_block(delta.round+1, &message_block, working_state)
 
-	for i := 0; i < 16; i++ {
-		mb[i] += delta.mb[i]
-	}
+	return md5_ihv{x[0] + y[0], x[1] + y[1], x[2] + y[2], x[3] + y[3]}
+}
 
-	a := ws[0] + delta.ws[0]
-	b := ws[1] + delta.ws[1]
-	c := ws[2] + delta.ws[2]
-	d := ws[3] + delta.ws[3]
+func unprocess_md5_block(start_round int, message_block *md5_mb, working_state *md5_ihv) md5_ihv {
+	i := start_round
+
+	a := working_state[0]
+	b := working_state[1]
+	c := working_state[2]
+	d := working_state[3]
 
 	for ; i >= 48; i-- {
 		a, b, c, d = b, c, d, a
 		f := c ^ (b | (^d))
-		m := mb[(7*i)%16]
+		m := message_block[(7*i)%16]
 
 		a -= b
 		a = rotl32(a, 32-md5_shifts[i])
@@ -215,7 +218,7 @@ func unprocess_mb(delta *md5_delta, mb md5_mb, ws md5_ihv) md5_ihv {
 	for ; i >= 32; i-- {
 		a, b, c, d = b, c, d, a
 		f := b ^ c ^ d
-		m := mb[((3*i)+5)%16]
+		m := message_block[((3*i)+5)%16]
 
 		a -= b
 		a = rotl32(a, 32-md5_shifts[i])
@@ -225,7 +228,7 @@ func unprocess_mb(delta *md5_delta, mb md5_mb, ws md5_ihv) md5_ihv {
 	for ; i >= 16; i-- {
 		a, b, c, d = b, c, d, a
 		f := (d & b) | ((^d) & c)
-		m := mb[((5*i)+1)%16]
+		m := message_block[((5*i)+1)%16]
 
 		a -= b
 		a = rotl32(a, 32-md5_shifts[i])
@@ -235,11 +238,46 @@ func unprocess_mb(delta *md5_delta, mb md5_mb, ws md5_ihv) md5_ihv {
 	for ; i >= 0; i-- {
 		a, b, c, d = b, c, d, a
 		f := (b & c) | ((^b) & d)
-		m := mb[i]
+		m := message_block[i]
 
 		a -= b
 		a = rotl32(a, 32-md5_shifts[i])
 		a -= f + m + md5_constants[i]
+	}
+
+	return md5_ihv{a, b, c, d}
+}
+
+func process_md5_block(start_round int, message_block *md5_mb, working_state *md5_ihv) md5_ihv {
+	i := start_round
+
+	a := working_state[0]
+	b := working_state[1]
+	c := working_state[2]
+	d := working_state[3]
+
+	for ; i < 16; i-- {
+		f := (b & c) | ((^b) & d)
+		m := message_block[i]
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+	}
+
+	for ; i < 32; i-- {
+		f := (d & b) | ((^d) & c)
+		m := message_block[((5*i)+1)%16]
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+	}
+
+	for ; i < 48; i-- {
+		f := b ^ c ^ d
+		m := message_block[((3*i)+5)%16]
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+	}
+
+	for ; i < 64; i-- {
+		f := c ^ (b | (^d))
+		m := message_block[(7*i)%16]
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
 	}
 
 	return md5_ihv{a, b, c, d}
