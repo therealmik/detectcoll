@@ -28,17 +28,23 @@ var (
 	}
 )
 
-type md5_ihv [4]uint32
+type md5_ihv [4]uint32 // An IV/IHV/working state
+type md5_mb [16]uint32 // A message block (input data converted to u32le)
 
 type MD5 struct {
-	ml  uint64
-	ihv md5_ihv
-	buf []byte
+	ml  uint64  // message length (in bits)
+	ihv md5_ihv // IHV (or IV if no blocks have been processed)
+	buf []byte  // Left-over data from a previous Write()
 }
 
-type md5_mb [16]uint32
+type md5_delta struct {
+	round int     // Which round do we apply these changes at
+	mb    md5_mb  // Change to the message block
+	ws    md5_ihv // Change to the working state
+}
 
 func append_u32le(ret []byte, n uint32) []byte {
+	// Append an integer as 4 bytes in little-endian byte order
 	ret = append(ret, byte(n))
 	ret = append(ret, byte(n>>8))
 	ret = append(ret, byte(n>>16))
@@ -47,6 +53,7 @@ func append_u32le(ret []byte, n uint32) []byte {
 }
 
 func NewMD5() *MD5 {
+	// Return a new MD5 collision-detecting hash object
 	return &MD5{
 		ml:  0,
 		ihv: [4]uint32{0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476},
@@ -54,18 +61,24 @@ func NewMD5() *MD5 {
 }
 
 func (s *MD5) Reset() {
+	// Reset the hash object back to new
 	*s = *(NewMD5())
 }
 
 func (s *MD5) Size() int {
+	// How many bytes Sum() returns
 	return 16
 }
 
 func (s *MD5) BlockSize() int {
+	// The blocksize of the hash
 	return 64
 }
 
 func (s *MD5) Sum(ret []byte) []byte {
+	// Append the hash output of all data written so far to ret and
+	// return that.  This doesn't modify the state of the hash object.
+
 	t := *s // Copy s
 
 	var padding []byte
@@ -101,6 +114,7 @@ func (s *MD5) Sum(ret []byte) []byte {
 }
 
 func (s *MD5) Write(b []byte) (n int, err error) {
+	// MD5_Update() but in Go ;)
 	s.ml += uint64(len(b)) * 8
 	s.buf = append(s.buf, b...)
 
@@ -114,6 +128,7 @@ func (s *MD5) Write(b []byte) (n int, err error) {
 }
 
 func create_md5_mb(data []byte) *md5_mb {
+	// Take 64 bytes worth of data, and convert into 32-bit big-endian integers
 	var mb md5_mb
 
 	if len(data) != 64 {
@@ -130,45 +145,102 @@ func create_md5_mb(data []byte) *md5_mb {
 
 func (s *MD5) process_mb(mb *md5_mb) {
 	var i int
+	var ws [64]md5_ihv
+
 	a := s.ihv[0]
 	b := s.ihv[1]
 	c := s.ihv[2]
 	d := s.ihv[3]
 
-	chug := func(f, m uint32) {
-		temp := d
-		d = c
-		c = b
-		b += rotl32((a + f + md5_constants[i] + m), md5_shifts[i])
-		a = temp
-	}
-
 	for ; i < 16; i++ {
 		f := (b & c) | ((^b) & d)
-		g := i
-		chug(f, mb[g])
+		m := mb[i]
+
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+		ws[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 32; i++ {
 		f := (d & b) | ((^d) & c)
-		g := ((5 * i) + 1) % 16
-		chug(f, mb[g])
+		m := mb[((5*i)+1)%16]
+
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+		ws[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 48; i++ {
 		f := b ^ c ^ d
-		g := ((3 * i) + 5) % 16
-		chug(f, mb[g])
+		m := mb[((3*i)+5)%16]
+
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+		ws[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 64; i++ {
 		f := c ^ (b | (^d))
-		g := (7 * i) % 16
-		chug(f, mb[g])
+		m := mb[(7*i)%16]
+
+		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
+		ws[i] = md5_ihv{a, b, c, d}
 	}
 
 	s.ihv[0] += a
 	s.ihv[1] += b
 	s.ihv[2] += c
 	s.ihv[3] += d
+}
+
+func unprocess_mb(delta *md5_delta, mb md5_mb, ws md5_ihv) md5_ihv {
+	i := delta.round
+
+	for i := 0; i < 16; i++ {
+		mb[i] += delta.mb[i]
+	}
+
+	a := ws[0] + delta.ws[0]
+	b := ws[1] + delta.ws[1]
+	c := ws[2] + delta.ws[2]
+	d := ws[3] + delta.ws[3]
+
+	for ; i >= 48; i-- {
+		a, b, c, d = b, c, d, a
+		f := c ^ (b | (^d))
+		m := mb[(7*i)%16]
+
+		a -= b
+		a = rotl32(a, 32-md5_shifts[i])
+		a -= f + m + md5_constants[i]
+	}
+
+	for ; i >= 32; i-- {
+		a, b, c, d = b, c, d, a
+		f := b ^ c ^ d
+		m := mb[((3*i)+5)%16]
+
+		a -= b
+		a = rotl32(a, 32-md5_shifts[i])
+		a -= f + m + md5_constants[i]
+	}
+
+	for ; i >= 16; i-- {
+		a, b, c, d = b, c, d, a
+		f := (d & b) | ((^d) & c)
+		m := mb[((5*i)+1)%16]
+
+		a -= b
+		a = rotl32(a, 32-md5_shifts[i])
+		a -= f + m + md5_constants[i]
+	}
+
+	for ; i >= 0; i-- {
+		a, b, c, d = b, c, d, a
+		f := (b & c) | ((^b) & d)
+		m := mb[i]
+
+		a -= b
+		a = rotl32(a, 32-md5_shifts[i])
+		a -= f + m + md5_constants[i]
+	}
+
+	return md5_ihv{a, b, c, d}
 }
