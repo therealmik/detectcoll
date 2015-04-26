@@ -32,15 +32,15 @@ type md5_ihv [4]uint32 // An IV/IHV/working state
 type md5_mb [16]uint32 // A message block (input data converted to u32le)
 
 type MD5 struct {
-	ml  uint64  // message length (in bits)
-	ihv md5_ihv // IHV (or IV if no blocks have been processed)
-	buf []byte  // Left-over data from a previous Write()
+	message_length uint64  // message length (in bits)
+	ihv            md5_ihv // IHV (or IV if no blocks have been processed)
+	buf            []byte  // Left-over data from a previous Write()
 }
 
 type md5_delta struct {
-	round int     // Which round do we apply these changes at
-	mb    md5_mb  // Change to the message block
-	ws    md5_ihv // Change to the working state
+	round         int     // Which round do we apply these changes at
+	message_block md5_mb  // Change to the message block
+	working_state md5_ihv // Change to the working state
 }
 
 func append_u32le(ret []byte, n uint32) []byte {
@@ -55,8 +55,8 @@ func append_u32le(ret []byte, n uint32) []byte {
 func NewMD5() *MD5 {
 	// Return a new MD5 collision-detecting hash object
 	return &MD5{
-		ml:  0,
-		ihv: [4]uint32{0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476},
+		message_length: 0,
+		ihv:            [4]uint32{0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476},
 	}
 }
 
@@ -92,14 +92,14 @@ func (s *MD5) Sum(ret []byte) []byte {
 	copy(padding, t.buf)
 	padding[len(t.buf)] = 0x80
 
-	padding[len(padding)-1] = byte(t.ml >> 56)
-	padding[len(padding)-2] = byte(t.ml >> 48)
-	padding[len(padding)-3] = byte(t.ml >> 40)
-	padding[len(padding)-4] = byte(t.ml >> 32)
-	padding[len(padding)-5] = byte(t.ml >> 24)
-	padding[len(padding)-6] = byte(t.ml >> 16)
-	padding[len(padding)-7] = byte(t.ml >> 8)
-	padding[len(padding)-8] = byte(t.ml)
+	padding[len(padding)-1] = byte(t.message_length >> 56)
+	padding[len(padding)-2] = byte(t.message_length >> 48)
+	padding[len(padding)-3] = byte(t.message_length >> 40)
+	padding[len(padding)-4] = byte(t.message_length >> 32)
+	padding[len(padding)-5] = byte(t.message_length >> 24)
+	padding[len(padding)-6] = byte(t.message_length >> 16)
+	padding[len(padding)-7] = byte(t.message_length >> 8)
+	padding[len(padding)-8] = byte(t.message_length)
 
 	for i := 0; i < len(padding); i += 64 {
 		mb := create_md5_mb(padding[i : i+64])
@@ -115,7 +115,7 @@ func (s *MD5) Sum(ret []byte) []byte {
 
 func (s *MD5) Write(b []byte) (n int, err error) {
 	// MD5_Update() but in Go ;)
-	s.ml += uint64(len(b)) * 8
+	s.message_length += uint64(len(b)) * 8
 	s.buf = append(s.buf, b...)
 
 	for len(s.buf) >= 64 {
@@ -190,9 +190,16 @@ func (s *MD5) process_mb(mb *md5_mb) {
 	s.ihv[3] += d
 }
 
-func apply_md5_delta(delta md5_delta, message_block md5_mb, working_state *md5_ihv) md5_ihv {
-	x := unprocess_md5_block(delta.round, &message_block, working_state)
-	y := process_md5_block(delta.round+1, &message_block, working_state)
+func apply_md5_delta(delta md5_delta, message_block md5_mb, working_state md5_ihv) md5_ihv {
+	for i := 0; i < 16; i++ {
+		message_block[i] += delta.message_block[i]
+	}
+	for i := 0; i < 4; i++ {
+		working_state[i] += delta.working_state[i]
+	}
+
+	x := unprocess_md5_block(delta.round, &message_block, &working_state)
+	y := process_md5_block(delta.round+1, &message_block, &working_state)
 
 	return md5_ihv{x[0] + y[0], x[1] + y[1], x[2] + y[2], x[3] + y[3]}
 }
