@@ -266,6 +266,7 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 
 	if compare_ihv(ihv, s.ihv) { // If this made no difference to the result
 		if compare_ihv_swapped_msb(ihv, prev_ihv) { // and only flipped the msb from the previous
+			log.Print("Detected possible den Boar & Bosselaers attack")
 			// FIXME: Check previous block for collision attack
 		} else {
 			s.collisions++
