@@ -37,7 +37,7 @@ type MD5 struct {
 	message_length uint64  // message length (in bits)
 	ihv            md5_ihv // IHV (or IV if no blocks have been processed)
 	buf            []byte  // Left-over data from a previous Write()
-	collisions     int     // How many collisions were detected
+	collisions     bool    // How many collisions were detected
 }
 
 type md5_delta struct {
@@ -81,7 +81,7 @@ func (s *MD5) BlockSize() int {
 	return 64
 }
 
-func (s *MD5) Sum(ret []byte) []byte {
+func (s *MD5) DetectSum(ret []byte) ([]byte, bool) {
 	// Append the hash output of all data written so far to ret and
 	// return that.  This doesn't modify the state of the hash object.
 
@@ -116,8 +116,13 @@ func (s *MD5) Sum(ret []byte) []byte {
 		ret = append_u32le(ret, t.ihv[i])
 	}
 
-	if t.collisions > 0 {
-		log.Printf("Detected %d collisions in hash %x", t.collisions, ret)
+	return ret, t.collisions
+}
+
+func (s *MD5) Sum(ret []byte) []byte {
+	ret, detected := s.DetectSum(ret)
+	if detected {
+		log.Printf("Detected collisions in hash %x", ret)
 	}
 	return ret
 }
@@ -229,13 +234,13 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 		if delta.zero {
 			ihv := reapply_md5(delta.round, &message_block, &ws)
 			if compare_ihv(ihv, s.ihv) {
-				s.collisions++
+				s.collisions = true
 			}
 		}
 		if delta.msb {
 			ihv := reapply_md5(delta.round, &message_block, &ws_msb)
 			if compare_ihv(ihv, s.ihv) {
-				s.collisions++
+				s.collisions = true
 			}
 		}
 		if delta.negate {
@@ -247,13 +252,13 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 			if delta.zero {
 				ihv := reapply_md5(delta.round, &message_block, &ws)
 				if compare_ihv(ihv, s.ihv) {
-					s.collisions++
+					s.collisions = true
 				}
 			}
 			if delta.msb {
 				ihv := reapply_md5(delta.round, &message_block, &ws_msb)
 				if compare_ihv(ihv, s.ihv) {
-					s.collisions++
+					s.collisions = true
 				}
 			}
 		}
@@ -268,7 +273,7 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 			log.Print("Detected possible den Boar & Bosselaers attack")
 			// FIXME: Check previous block for collision attack
 		} else {
-			s.collisions++
+			s.collisions = true
 		}
 	}
 }

@@ -2,12 +2,11 @@ package detectcoll
 
 import (
 	"crypto/subtle"
-	"hash"
 	"testing"
 )
 
 func TestSHA1(t *testing.T) {
-	var h hash.Hash = NewSHA1()
+	var h Hash = NewSHA1()
 
 	var ret []byte
 
@@ -23,4 +22,8 @@ func TestSHA1(t *testing.T) {
 		t.Errorf("Hash('abc') incorrect: %x", ret)
 	}
 
+}
+
+func TestSHA1Collisions(t *testing.T) {
+	// Still working on this test case...
 }

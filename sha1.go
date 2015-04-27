@@ -1,6 +1,6 @@
 package detectcoll
 
-import _ "log"
+import "log"
 
 const (
 	sha1_rc1 uint32 = 0x5A827999
@@ -12,9 +12,10 @@ const (
 type sha1_ihv [5]uint32
 
 type SHA1 struct {
-	ml  uint64
-	ihv sha1_ihv
-	buf []byte
+	ml         uint64
+	ihv        sha1_ihv
+	buf        []byte
+	collisions bool
 }
 
 type sha1_mb [80]uint32
@@ -46,7 +47,7 @@ func (s *SHA1) BlockSize() int {
 	return 64
 }
 
-func (s *SHA1) Sum(ret []byte) []byte {
+func (s *SHA1) DetectSum(ret []byte) ([]byte, bool) {
 	t := *s // Copy s
 
 	var padding []byte
@@ -78,6 +79,14 @@ func (s *SHA1) Sum(ret []byte) []byte {
 		ret = append_u32be(ret, t.ihv[i])
 	}
 
+	return ret, s.collisions
+}
+
+func (s *SHA1) Sum(ret []byte) []byte {
+	ret, detected := s.DetectSum(ret)
+	if detected {
+		log.Printf("Detected collision in hash %x", ret)
+	}
 	return ret
 }
 
@@ -116,7 +125,7 @@ func create_sha1_mb(data []byte) *sha1_mb {
 func (s *SHA1) process_mb(mb *sha1_mb) {
 	var i int
 	var a, b, c, d, e uint32 = s.ihv[0], s.ihv[1], s.ihv[2], s.ihv[3], s.ihv[4]
-	var working_states [80]sha1_ihv
+	working_states := make([]sha1_ihv, 80)
 
 	chug := func(f, k, m uint32) {
 		a, b, c, d, e = e, a, b, c, d
@@ -153,6 +162,31 @@ func (s *SHA1) process_mb(mb *sha1_mb) {
 	s.ihv[2] += c
 	s.ihv[3] += d
 	s.ihv[4] += e
+
+	s.detect_collisions(mb, working_states)
+}
+
+func compare_sha1_ihv(ihv1, ihv2 sha1_ihv) bool {
+	result := (ihv1[0] ^ ihv2[0]) | (ihv1[1] ^ ihv2[1]) | (ihv1[2] ^ ihv2[2]) | (ihv1[3] ^ ihv2[3]) | (ihv1[4] ^ ihv2[4])
+	return result == 0
+}
+
+func (s *SHA1) detect_collisions(orig_message_block *sha1_mb, working_states []sha1_ihv) {
+	for _, dv := range sha1_dvs {
+		mb := dv.disturb(orig_message_block)
+		ihv := reapply_sha1(dv.K+13, &mb, working_states)
+		if compare_sha1_ihv(ihv, s.ihv) {
+			s.collisions = true
+		}
+	}
+}
+
+func reapply_sha1(round int, message_block *sha1_mb, working_states []sha1_ihv) sha1_ihv {
+	working_state := &working_states[round]
+	x := unprocess_sha1_block(round, message_block, working_state)
+	y := process_sha1_block(round+1, message_block, working_state)
+
+	return sha1_ihv{x[0] + y[0], x[1] + y[1], x[2] + y[2], x[3] + y[3], x[4] + y[4]}
 }
 
 func process_sha1_block(round int, message_block *sha1_mb, working_state *sha1_ihv) sha1_ihv {
