@@ -79,12 +79,12 @@ func (s *SHA1) DetectSum(ret []byte) ([]byte, bool) {
 		ret = append_u32be(ret, t.ihv[i])
 	}
 
-	return ret, s.collisions
+	return ret, !s.collisions
 }
 
 func (s *SHA1) Sum(ret []byte) []byte {
-	ret, detected := s.DetectSum(ret)
-	if detected {
+	ret, ok := s.DetectSum(ret)
+	if !ok {
 		log.Printf("Detected collision in hash %x", ret)
 	}
 	return ret

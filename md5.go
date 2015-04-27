@@ -116,12 +116,12 @@ func (s *MD5) DetectSum(ret []byte) ([]byte, bool) {
 		ret = append_u32le(ret, t.ihv[i])
 	}
 
-	return ret, t.collisions
+	return ret, !t.collisions
 }
 
 func (s *MD5) Sum(ret []byte) []byte {
-	ret, detected := s.DetectSum(ret)
-	if detected {
+	ret, ok := s.DetectSum(ret)
+	if !ok {
 		log.Printf("Detected collisions in hash %x", ret)
 	}
 	return ret
