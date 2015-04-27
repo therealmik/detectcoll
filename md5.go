@@ -1,5 +1,7 @@
 package detectcoll
 
+import "log"
+
 var (
 	md5_shifts [64]uint = [64]uint{
 		7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
@@ -35,12 +37,16 @@ type MD5 struct {
 	message_length uint64  // message length (in bits)
 	ihv            md5_ihv // IHV (or IV if no blocks have been processed)
 	buf            []byte  // Left-over data from a previous Write()
+	collisions     int     // How many collisions were detected
 }
 
 type md5_delta struct {
 	round         int     // Which round do we apply these changes at
 	message_block md5_mb  // Change to the message block
 	working_state md5_ihv // Change to the working state
+	negate        bool
+	zero          bool
+	msb           bool
 }
 
 func append_u32le(ret []byte, n uint32) []byte {
@@ -110,6 +116,9 @@ func (s *MD5) Sum(ret []byte) []byte {
 		ret = append_u32le(ret, t.ihv[i])
 	}
 
+	if t.collisions > 0 {
+		log.Printf("Detected %d collisions in hash %x", t.collisions, ret)
+	}
 	return ret
 }
 
@@ -143,9 +152,9 @@ func create_md5_mb(data []byte) *md5_mb {
 	return &mb
 }
 
-func (s *MD5) process_mb(mb *md5_mb) {
+func (s *MD5) process_mb(message_block *md5_mb) {
 	var i int
-	var ws [64]md5_ihv
+	working_states := make([]md5_ihv, 64)
 
 	a := s.ihv[0]
 	b := s.ihv[1]
@@ -154,46 +163,60 @@ func (s *MD5) process_mb(mb *md5_mb) {
 
 	for ; i < 16; i++ {
 		f := (b & c) | ((^b) & d)
-		m := mb[i]
+		m := message_block[i]
 
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
-		ws[i] = md5_ihv{a, b, c, d}
+		working_states[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 32; i++ {
 		f := (d & b) | ((^d) & c)
-		m := mb[((5*i)+1)%16]
+		m := message_block[((5*i)+1)%16]
 
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
-		ws[i] = md5_ihv{a, b, c, d}
+		working_states[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 48; i++ {
 		f := b ^ c ^ d
-		m := mb[((3*i)+5)%16]
+		m := message_block[((3*i)+5)%16]
 
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
-		ws[i] = md5_ihv{a, b, c, d}
+		working_states[i] = md5_ihv{a, b, c, d}
 	}
 
 	for ; i < 64; i++ {
 		f := c ^ (b | (^d))
-		m := mb[(7*i)%16]
+		m := message_block[(7*i)%16]
 
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
-		ws[i] = md5_ihv{a, b, c, d}
+		working_states[i] = md5_ihv{a, b, c, d}
 	}
 
 	s.ihv[0] += a
 	s.ihv[1] += b
 	s.ihv[2] += c
 	s.ihv[3] += d
+
+	s.detect_collisions(message_block, working_states)
 }
 
-func apply_md5_delta(delta md5_delta, message_block md5_mb, working_state md5_ihv) md5_ihv {
+func (s *MD5) detect_collisions(message_block *md5_mb, working_states []md5_ihv) {
+	for _, delta := range MD5_DELTA {
+		ihv := apply_md5_delta(&delta, *message_block, working_states)
+		result := (ihv[0] ^ s.ihv[0]) | (ihv[1] ^ s.ihv[1]) | (ihv[2] ^ s.ihv[2]) | (ihv[3] ^ s.ihv[3])
+		if result == 0 {
+			s.collisions++
+		}
+	}
+}
+
+func apply_md5_delta(delta *md5_delta, message_block md5_mb, working_states []md5_ihv) md5_ihv {
 	for i := 0; i < 16; i++ {
 		message_block[i] += delta.message_block[i]
 	}
+
+	working_state := working_states[delta.round]
 	for i := 0; i < 4; i++ {
 		working_state[i] += delta.working_state[i]
 	}
@@ -263,25 +286,25 @@ func process_md5_block(start_round int, message_block *md5_mb, working_state *md
 	c := working_state[2]
 	d := working_state[3]
 
-	for ; i < 16; i-- {
+	for ; i < 16; i++ {
 		f := (b & c) | ((^b) & d)
 		m := message_block[i]
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
 	}
 
-	for ; i < 32; i-- {
+	for ; i < 32; i++ {
 		f := (d & b) | ((^d) & c)
 		m := message_block[((5*i)+1)%16]
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
 	}
 
-	for ; i < 48; i-- {
+	for ; i < 48; i++ {
 		f := b ^ c ^ d
 		m := message_block[((3*i)+5)%16]
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
 	}
 
-	for ; i < 64; i-- {
+	for ; i < 64; i++ {
 		f := c ^ (b | (^d))
 		m := message_block[(7*i)%16]
 		b, c, d, a = b+rotl32((a+f+md5_constants[i]+m), md5_shifts[i]), b, c, d
