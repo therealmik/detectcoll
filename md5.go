@@ -193,36 +193,97 @@ func (s *MD5) process_mb(message_block *md5_mb) {
 		working_states[i] = md5_ihv{a, b, c, d}
 	}
 
+	prev_ihv := s.ihv
+
 	s.ihv[0] += a
 	s.ihv[1] += b
 	s.ihv[2] += c
 	s.ihv[3] += d
 
-	s.detect_collisions(message_block, working_states)
+	s.detect_collisions(message_block, working_states, prev_ihv)
 }
 
-func (s *MD5) detect_collisions(message_block *md5_mb, working_states []md5_ihv) {
+func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5_ihv, prev_ihv md5_ihv) {
+	compare_ihv := func(ihv1, ihv2 md5_ihv) bool {
+		result := (ihv1[0] ^ ihv2[0]) | (ihv1[1] ^ ihv2[1]) | (ihv1[2] ^ ihv2[2]) | (ihv1[3] ^ ihv2[3])
+		return result == 0
+	}
+
+	compare_ihv_swapped_msb := func(ihv1, ihv2 md5_ihv) bool {
+		result := (ihv1[0] ^ ihv2[0] ^ (1 << 31)) | (ihv1[1] ^ ihv2[1] ^ (1 << 31)) | (ihv1[2] ^ ihv2[2] ^ (1 << 31)) | (ihv1[3] ^ ihv2[3] ^ (1 << 31))
+		return result == 0
+	}
+
+
 	for _, delta := range MD5_DELTA {
-		ihv := apply_md5_delta(&delta, *message_block, working_states)
-		result := (ihv[0] ^ s.ihv[0]) | (ihv[1] ^ s.ihv[1]) | (ihv[2] ^ s.ihv[2]) | (ihv[3] ^ s.ihv[3])
-		if result == 0 {
+		message_block := *orig_message_block
+		for i := 0; i < 16; i++ {
+			message_block[i] += delta.message_block[i]
+		}
+
+		ws := working_states[delta.round]
+		ws_msb := working_states[delta.round].add_msb()
+		for i := 0; i < 4; i++ {
+			ws_msb[i] += (1 << 31)
+		}
+
+		if delta.zero {
+			ihv := reapply_md5(delta.round, &message_block, &ws)
+			if compare_ihv(ihv, s.ihv) {
+				s.collisions++
+			}
+		}
+		if delta.msb {
+			ihv := reapply_md5(delta.round, &message_block, &ws_msb)
+			if compare_ihv(ihv, s.ihv) {
+				s.collisions++
+			}
+		}
+		if delta.negate {
+			message_block = *orig_message_block
+			for i := 0; i < 16; i++ {
+				message_block[i] -= delta.message_block[i]
+			}
+
+			if delta.zero {
+				ihv := reapply_md5(delta.round, &message_block, &ws)
+				if compare_ihv(ihv, s.ihv) {
+					s.collisions++
+				}
+			}
+			if delta.msb {
+				ihv := reapply_md5(delta.round, &message_block, &ws_msb)
+				if compare_ihv(ihv, s.ihv) {
+					s.collisions++
+				}
+			}
+		}
+	}
+
+	// check for special den Boer & Bosselaers attack (zero difference block, differential path entirely MSB differences)
+	ws := working_states[44].add_msb()
+	ihv := reapply_md5(44, orig_message_block, &ws) // Swap WS MSB at round 44, and reapply
+
+	if compare_ihv(ihv, s.ihv) { // If this made no difference to the result
+		if compare_ihv_swapped_msb(ihv, prev_ihv) { // and only flipped the msb from the previous
+			// FIXME: Check previous block for collision attack
+		} else {
 			s.collisions++
 		}
 	}
 }
 
-func apply_md5_delta(delta *md5_delta, message_block md5_mb, working_states []md5_ihv) md5_ihv {
-	for i := 0; i < 16; i++ {
-		message_block[i] += delta.message_block[i]
-	}
+func (x md5_ihv) add_msb() md5_ihv {
+	x[0] += 1<<31
+	x[1] += 1<<31
+	x[2] += 1<<31
+	x[3] += 1<<31
+	return x
+}
 
-	working_state := working_states[delta.round]
-	for i := 0; i < 4; i++ {
-		working_state[i] += delta.working_state[i]
-	}
-
-	x := unprocess_md5_block(delta.round, &message_block, &working_state)
-	y := process_md5_block(delta.round+1, &message_block, &working_state)
+func reapply_md5(round int, message_block *md5_mb, working_state *md5_ihv) md5_ihv {
+	x := unprocess_md5_block(round, message_block, working_state)
+	y := process_md5_block(round+1, message_block, working_state)
 
 	return md5_ihv{x[0] + y[0], x[1] + y[1], x[2] + y[2], x[3] + y[3]}
 }
