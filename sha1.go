@@ -1,10 +1,12 @@
 package detectcoll
 
+import _ "log"
+
 const (
-	sha1_rc1 uint32 = 1518500249
-	sha1_rc2 uint32 = 1859775393
-	sha1_rc3 uint32 = 2400959708
-	sha1_rc4 uint32 = 3395469782
+	sha1_rc1 uint32 = 0x5A827999
+	sha1_rc2 uint32 = 0x6ED9EBA1
+	sha1_rc3 uint32 = 0x8F1BBCDC
+	sha1_rc4 uint32 = 0xCA62C1D6
 )
 
 type sha1_ihv [5]uint32
@@ -16,10 +18,6 @@ type SHA1 struct {
 }
 
 type sha1_mb [80]uint32
-
-func rotl32(i uint32, n uint) uint32 {
-	return (i << n) | (i >> (32 - n))
-}
 
 func append_u32be(ret []byte, n uint32) []byte {
 	ret = append(ret, byte(n>>24))
@@ -117,39 +115,37 @@ func create_sha1_mb(data []byte) *sha1_mb {
 
 func (s *SHA1) process_mb(mb *sha1_mb) {
 	var i int
-	a := s.ihv[0]
-	b := s.ihv[1]
-	c := s.ihv[2]
-	d := s.ihv[3]
-	e := s.ihv[4]
+	var a, b, c, d, e uint32 = s.ihv[0], s.ihv[1], s.ihv[2], s.ihv[3], s.ihv[4]
+	var working_states [80]sha1_ihv
 
-	chug := func(f, k uint32) {
-		temp := rotl32(a, 5) + f + e + k + mb[i]
-		e = d
-		d = c
-		c = rotl32(b, 30)
-		b = a
-		a = temp
+	chug := func(f, k, m uint32) {
+		a, b, c, d, e = e, a, b, c, d
+		c = rotl32(c, 30)
+		a += rotl32(b, 5) + f + k + m
 	}
 
 	for ; i < 20; i++ {
 		f := (b & c) | ((^b) & d)
-		chug(f, sha1_rc1)
+		chug(f, sha1_rc1, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
 	}
 
 	for ; i < 40; i++ {
 		f := b ^ c ^ d
-		chug(f, sha1_rc2)
+		chug(f, sha1_rc2, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
 	}
 
 	for ; i < 60; i++ {
 		f := (b & c) | (b & d) | (c & d)
-		chug(f, sha1_rc3)
+		chug(f, sha1_rc3, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
 	}
 
 	for ; i < 80; i++ {
 		f := b ^ c ^ d
-		chug(f, sha1_rc4)
+		chug(f, sha1_rc4, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
 	}
 
 	s.ihv[0] += a
@@ -157,4 +153,70 @@ func (s *SHA1) process_mb(mb *sha1_mb) {
 	s.ihv[2] += c
 	s.ihv[3] += d
 	s.ihv[4] += e
+}
+
+func process_sha1_block(round int, message_block *sha1_mb, working_state *sha1_ihv) sha1_ihv {
+	var i int = round
+	a, b, c, d, e := working_state[0], working_state[1], working_state[2], working_state[3], working_state[4]
+
+	chug := func(f, k, m uint32) {
+		a, b, c, d, e = e, a, b, c, d
+		c = rotl32(c, 30)
+		a += rotl32(b, 5) + f + k + m
+	}
+
+	for ; i < 20; i++ {
+		f := (b & c) | ((^b) & d)
+		chug(f, sha1_rc1, message_block[i])
+	}
+
+	for ; i < 40; i++ {
+		f := b ^ c ^ d
+		chug(f, sha1_rc2, message_block[i])
+	}
+
+	for ; i < 60; i++ {
+		f := (b & c) | (b & d) | (c & d)
+		chug(f, sha1_rc3, message_block[i])
+	}
+
+	for ; i < 80; i++ {
+		f := b ^ c ^ d
+		chug(f, sha1_rc4, message_block[i])
+	}
+
+	return sha1_ihv{a, b, c, d, e}
+}
+
+func unprocess_sha1_block(round int, message_block *sha1_mb, working_state *sha1_ihv) sha1_ihv {
+	var i int = round
+	a, b, c, d, e := working_state[0], working_state[1], working_state[2], working_state[3], working_state[4]
+
+	spew := func(f, k, m uint32) {
+		a -= rotl32(b, 5) + f + k + m
+		c = rotr32(c, 30)
+		e, a, b, c, d = a, b, c, d, e
+	}
+
+	for ; i >= 60; i-- {
+		f := b ^ c ^ d
+		spew(f, sha1_rc4, message_block[i])
+	}
+
+	for ; i >= 40; i-- {
+		f := (b & c) | (b & d) | (c & d)
+		spew(f, sha1_rc3, message_block[i])
+	}
+
+	for ; i >= 20; i-- {
+		f := b ^ c ^ d
+		spew(f, sha1_rc2, message_block[i])
+	}
+
+	for ; i >= 0; i-- {
+		f := (b & c) | ((^b) & d)
+		spew(f, sha1_rc1, message_block[i])
+	}
+
+	return sha1_ihv{a, b, c, d, e}
 }
