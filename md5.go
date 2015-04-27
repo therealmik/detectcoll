@@ -214,7 +214,6 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 		return result == 0
 	}
 
-
 	for _, delta := range MD5_DELTA {
 		message_block := *orig_message_block
 		for i := 0; i < 16; i++ {
@@ -275,10 +274,10 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 }
 
 func (x md5_ihv) add_msb() md5_ihv {
-	x[0] += 1<<31
-	x[1] += 1<<31
-	x[2] += 1<<31
-	x[3] += 1<<31
+	x[0] += 1 << 31
+	x[1] += 1 << 31
+	x[2] += 1 << 31
+	x[3] += 1 << 31
 	return x
 }
 
