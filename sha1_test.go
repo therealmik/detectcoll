@@ -1,6 +1,7 @@
 package detectcoll
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"testing"
 )
@@ -22,6 +23,67 @@ func TestSHA1(t *testing.T) {
 		t.Errorf("Hash('abc') incorrect: %x", ret)
 	}
 
+}
+
+func TestUnprocess(t *testing.T) {
+
+	// Create a random message block
+	dataBuf := make([]byte, 64)
+	if _, err := rand.Read(dataBuf); err != nil {
+		t.Fatal(err)
+	}
+	mb := create_sha1_mb(dataBuf)
+
+	// Verbatim copy of SHA1.process_mb()
+	var i int
+	var a, b, c, d, e uint32 = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0
+
+	iv := [5]uint32{a, b, c, d, e}
+	working_states := make([]sha1_ihv, 80)
+
+	chug := func(f, k, m uint32) {
+		a, b, c, d, e = e, a, b, c, d
+		c = rotl32(c, 30)
+		a += rotl32(b, 5) + f + k + m
+	}
+
+	for ; i < 20; i++ {
+		f := (b & c) | ((^b) & d)
+		chug(f, sha1_rc1, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
+	}
+
+	for ; i < 40; i++ {
+		f := b ^ c ^ d
+		chug(f, sha1_rc2, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
+	}
+
+	for ; i < 60; i++ {
+		f := (b & c) | (b & d) | (c & d)
+		chug(f, sha1_rc3, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
+	}
+
+	for ; i < 80; i++ {
+		f := b ^ c ^ d
+		chug(f, sha1_rc4, mb[i])
+		working_states[i] = [5]uint32{a, b, c, d, e}
+	}
+
+	// Not really the ihv, since we didn't add the IV
+	ihv := [5]uint32{a, b, c, d, e}
+
+	recovered_iv := unprocess_sha1_block(77, mb, &working_states[77])
+	recovered_ihv := process_sha1_block(3, mb, &working_states[2])
+
+	if !compare_sha1_ihv(recovered_iv, iv) {
+		t.Errorf("Unprocess failed, orig=%x recovered=%x", iv, recovered_iv)
+	}
+
+	if !compare_sha1_ihv(recovered_ihv, ihv) {
+		t.Errorf("Reprocess failed, orig=%x recovered=%x", ihv, recovered_ihv)
+	}
 }
 
 func TestSHA1Collisions(t *testing.T) {

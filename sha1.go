@@ -228,27 +228,30 @@ func unprocess_sha1_block(round int, message_block *sha1_mb, working_state *sha1
 
 	spew := func(f, k, m uint32) {
 		a -= rotl32(b, 5) + f + k + m
-		c = rotr32(c, 30)
 		e, a, b, c, d = a, b, c, d, e
 	}
 
 	for ; i >= 60; i-- {
-		f := b ^ c ^ d
+		c = rotr32(c, 30)
+		f := c ^ d ^ e
 		spew(f, sha1_rc4, message_block[i])
 	}
 
 	for ; i >= 40; i-- {
-		f := (b & c) | (b & d) | (c & d)
+		c = rotr32(c, 30)
+		f := (c & d) | (c & e) | (d & e)
 		spew(f, sha1_rc3, message_block[i])
 	}
 
 	for ; i >= 20; i-- {
-		f := b ^ c ^ d
+		c = rotr32(c, 30)
+		f := c ^ d ^ e
 		spew(f, sha1_rc2, message_block[i])
 	}
 
 	for ; i >= 0; i-- {
-		f := (b & c) | ((^b) & d)
+		c = rotr32(c, 30)
+		f := (c & d) | ((^c) & e)
 		spew(f, sha1_rc1, message_block[i])
 	}
 
