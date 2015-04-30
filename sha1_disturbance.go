@@ -1,38 +1,109 @@
 package detectcoll
 
-type sha1_dv struct {
+import "fmt"
+
+type Sha1_dv struct {
 	Type          int
 	K             int
 	B             uint
 	message_block sha1_mb
 }
 
-var sha1_dvs []sha1_dv = []sha1_dv{
-	sha1_dv{Type: 1, K: 46, B: 0},
-	sha1_dv{Type: 1, K: 47, B: 0},
-	sha1_dv{Type: 1, K: 48, B: 0},
-	sha1_dv{Type: 1, K: 49, B: 0},
-	sha1_dv{Type: 1, K: 50, B: 0},
-	sha1_dv{Type: 1, K: 51, B: 0},
-	sha1_dv{Type: 1, K: 48, B: 2},
-	sha1_dv{Type: 1, K: 49, B: 2},
-	sha1_dv{Type: 1, K: 50, B: 2},
-	sha1_dv{Type: 2, K: 45, B: 0},
-	sha1_dv{Type: 2, K: 46, B: 0},
-	sha1_dv{Type: 2, K: 47, B: 0},
-	sha1_dv{Type: 2, K: 48, B: 0},
-	sha1_dv{Type: 2, K: 49, B: 0},
-	sha1_dv{Type: 2, K: 50, B: 0},
-	sha1_dv{Type: 2, K: 51, B: 0},
-	sha1_dv{Type: 2, K: 52, B: 0},
-	sha1_dv{Type: 2, K: 53, B: 0},
-	sha1_dv{Type: 2, K: 54, B: 0},
-	sha1_dv{Type: 2, K: 56, B: 0},
-	sha1_dv{Type: 2, K: 57, B: 0},
-	sha1_dv{Type: 2, K: 58, B: 0},
+var SHA1_STANDARD_DV []Sha1_dv = []Sha1_dv{
+	Sha1_dv{Type: 1, K: 46, B: 0},
+	Sha1_dv{Type: 1, K: 47, B: 0},
+	Sha1_dv{Type: 1, K: 48, B: 0},
+	Sha1_dv{Type: 1, K: 49, B: 0},
+	Sha1_dv{Type: 1, K: 50, B: 0},
+	Sha1_dv{Type: 1, K: 51, B: 0},
+	Sha1_dv{Type: 1, K: 48, B: 2},
+	Sha1_dv{Type: 1, K: 49, B: 2},
+	Sha1_dv{Type: 1, K: 50, B: 2},
+	Sha1_dv{Type: 2, K: 45, B: 0},
+	Sha1_dv{Type: 2, K: 46, B: 0},
+	Sha1_dv{Type: 2, K: 47, B: 0},
+	Sha1_dv{Type: 2, K: 48, B: 0},
+	Sha1_dv{Type: 2, K: 49, B: 0},
+	Sha1_dv{Type: 2, K: 50, B: 0},
+	Sha1_dv{Type: 2, K: 51, B: 0},
+	Sha1_dv{Type: 2, K: 52, B: 0},
+	Sha1_dv{Type: 2, K: 53, B: 0},
+	Sha1_dv{Type: 2, K: 54, B: 0},
+	Sha1_dv{Type: 2, K: 56, B: 0},
+	Sha1_dv{Type: 2, K: 57, B: 0},
+	Sha1_dv{Type: 2, K: 58, B: 0},
 }
 
-func (dv *sha1_dv) create_messageblock() {
+var SHA1_COMPLETE_DV []Sha1_dv = []Sha1_dv{
+	Sha1_dv{Type: 1, K: 42, B: 0},
+	Sha1_dv{Type: 1, K: 43, B: 0},
+	Sha1_dv{Type: 1, K: 44, B: 0},
+	Sha1_dv{Type: 1, K: 45, B: 0},
+	Sha1_dv{Type: 1, K: 46, B: 0},
+	Sha1_dv{Type: 1, K: 47, B: 0},
+	Sha1_dv{Type: 1, K: 48, B: 0},
+	Sha1_dv{Type: 1, K: 49, B: 0},
+	Sha1_dv{Type: 1, K: 50, B: 0},
+	Sha1_dv{Type: 1, K: 51, B: 0},
+	Sha1_dv{Type: 1, K: 52, B: 0},
+	Sha1_dv{Type: 1, K: 53, B: 0},
+	Sha1_dv{Type: 1, K: 54, B: 0},
+	Sha1_dv{Type: 1, K: 55, B: 0},
+	Sha1_dv{Type: 1, K: 56, B: 0},
+	Sha1_dv{Type: 1, K: 42, B: 2},
+	Sha1_dv{Type: 1, K: 43, B: 2},
+	Sha1_dv{Type: 1, K: 44, B: 2},
+	Sha1_dv{Type: 1, K: 45, B: 2},
+	Sha1_dv{Type: 1, K: 46, B: 2},
+	Sha1_dv{Type: 1, K: 47, B: 2},
+	Sha1_dv{Type: 1, K: 48, B: 2},
+	Sha1_dv{Type: 1, K: 49, B: 2},
+	Sha1_dv{Type: 1, K: 50, B: 2},
+	Sha1_dv{Type: 1, K: 51, B: 2},
+	Sha1_dv{Type: 1, K: 52, B: 2},
+	Sha1_dv{Type: 1, K: 53, B: 2},
+	Sha1_dv{Type: 1, K: 54, B: 2},
+	Sha1_dv{Type: 1, K: 55, B: 2},
+	Sha1_dv{Type: 1, K: 56, B: 2},
+	Sha1_dv{Type: 2, K: 44, B: 0},
+	Sha1_dv{Type: 2, K: 45, B: 0},
+	Sha1_dv{Type: 2, K: 46, B: 0},
+	Sha1_dv{Type: 2, K: 47, B: 0},
+	Sha1_dv{Type: 2, K: 48, B: 0},
+	Sha1_dv{Type: 2, K: 49, B: 0},
+	Sha1_dv{Type: 2, K: 50, B: 0},
+	Sha1_dv{Type: 2, K: 51, B: 0},
+	Sha1_dv{Type: 2, K: 52, B: 0},
+	Sha1_dv{Type: 2, K: 53, B: 0},
+	Sha1_dv{Type: 2, K: 54, B: 0},
+	Sha1_dv{Type: 2, K: 55, B: 0},
+	Sha1_dv{Type: 2, K: 56, B: 0},
+	Sha1_dv{Type: 2, K: 45, B: 2},
+	Sha1_dv{Type: 2, K: 46, B: 2},
+	Sha1_dv{Type: 2, K: 47, B: 2},
+	Sha1_dv{Type: 2, K: 48, B: 2},
+	Sha1_dv{Type: 2, K: 49, B: 2},
+	Sha1_dv{Type: 2, K: 50, B: 2},
+	Sha1_dv{Type: 2, K: 51, B: 2},
+	Sha1_dv{Type: 2, K: 52, B: 2},
+	Sha1_dv{Type: 2, K: 53, B: 2},
+	Sha1_dv{Type: 2, K: 54, B: 2},
+	Sha1_dv{Type: 2, K: 55, B: 2},
+	Sha1_dv{Type: 2, K: 56, B: 2},
+}
+
+func (dv *Sha1_dv) String() string {
+	var t string
+	switch dv.Type {
+	case 1:
+		t = "I"
+	case 2:
+		t = "II"
+	}
+	return fmt.Sprintf("%s(%d, %d)", t, dv.K, dv.B)
+}
+
+func (dv *Sha1_dv) create_messageblock() {
 	switch dv.Type {
 	case 1:
 		dv.message_block[dv.K+0] = (1 << 4)
@@ -66,12 +137,15 @@ func (dv *sha1_dv) create_messageblock() {
 }
 
 func init() {
-	for i, _ := range sha1_dvs {
-		sha1_dvs[i].create_messageblock()
+	for i, _ := range SHA1_STANDARD_DV {
+		SHA1_STANDARD_DV[i].create_messageblock()
+	}
+	for i, _ := range SHA1_COMPLETE_DV {
+		SHA1_COMPLETE_DV[i].create_messageblock()
 	}
 }
 
-func (dv *sha1_dv) disturb(mb *sha1_mb) sha1_mb {
+func (dv *Sha1_dv) disturb(mb *sha1_mb) sha1_mb {
 	var ret sha1_mb
 	for i := 0; i < 80; i++ {
 		ret[i] = dv.message_block[i] ^ mb[i]

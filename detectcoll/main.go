@@ -10,7 +10,8 @@ import (
 )
 
 var md5 = flag.Bool("md5", false, "Test for md5 collisions")
-var sha1 = flag.Bool("sha1", false, "Test for md5 collisions")
+var sha1 = flag.Bool("sha1", false, "Test for sha-1 collisions")
+var thorough = flag.Bool("thorough", false, "Test for extra (unlikely) sha-1 disturbance vectors")
 
 func main() {
 	log.SetOutput(os.Stderr)
@@ -43,15 +44,23 @@ func checkForCollisions(fd io.Reader, filename string) bool {
 	var md5h, sha1h detectcoll.Hash
 	var err error
 
+	if *md5 {
+		md5h = detectcoll.NewMD5()
+	}
+	if *sha1 {
+		if *thorough {
+			sha1h = detectcoll.NewSHA1Thorough()
+		} else {
+			sha1h = detectcoll.NewSHA1()
+		}
+	}
+
 	switch {
 	case *md5 && *sha1:
-		md5h, sha1h = detectcoll.NewMD5(), detectcoll.NewSHA1()
 		_, err = io.Copy(sha1h, io.TeeReader(fd, md5h))
 	case *md5:
-		md5h = detectcoll.NewMD5()
 		_, err = io.Copy(md5h, fd)
 	case *sha1:
-		sha1h = detectcoll.NewSHA1()
 		_, err = io.Copy(sha1h, fd)
 	}
 

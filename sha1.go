@@ -12,10 +12,12 @@ const (
 type sha1_ihv [5]uint32
 
 type SHA1 struct {
-	ml         uint64
-	ihv        sha1_ihv
-	buf        []byte
-	collisions bool
+	ml                  uint64
+	ihv                 sha1_ihv
+	buf                 []byte
+	collisions          bool
+	disturbance_vectors []Sha1_dv
+	collision_vectors   []Sha1_dv // disturbance vectors that made a noise
 }
 
 type sha1_mb [80]uint32
@@ -30,13 +32,24 @@ func append_u32be(ret []byte, n uint32) []byte {
 
 func NewSHA1() *SHA1 {
 	return &SHA1{
-		ml:  0,
-		ihv: [5]uint32{0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0},
+		ml:                  0,
+		ihv:                 [5]uint32{0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0},
+		disturbance_vectors: SHA1_STANDARD_DV,
+	}
+}
+
+func NewSHA1Thorough() *SHA1 {
+	return &SHA1{
+		ml:                  0,
+		ihv:                 [5]uint32{0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0},
+		disturbance_vectors: SHA1_COMPLETE_DV,
 	}
 }
 
 func (s *SHA1) Reset() {
+	dv := s.disturbance_vectors
 	*s = *(NewSHA1())
+	s.disturbance_vectors = dv
 }
 
 func (s *SHA1) Size() int {
@@ -85,7 +98,7 @@ func (s *SHA1) DetectSum(ret []byte) ([]byte, bool) {
 func (s *SHA1) Sum(ret []byte) []byte {
 	ret, ok := s.DetectSum(ret)
 	if !ok {
-		log.Printf("Detected collision in hash %x", ret)
+		log.Printf("Detected collision in hash %x (%v)", ret, s.collision_vectors)
 	}
 	return ret
 }
@@ -172,11 +185,12 @@ func compare_sha1_ihv(ihv1, ihv2 sha1_ihv) bool {
 }
 
 func (s *SHA1) detect_collisions(orig_message_block *sha1_mb, working_states []sha1_ihv) {
-	for _, dv := range sha1_dvs {
+	for _, dv := range s.disturbance_vectors {
 		mb := dv.disturb(orig_message_block)
 		ihv := reapply_sha1(dv.K+13, &mb, working_states)
 		if compare_sha1_ihv(ihv, s.ihv) {
 			s.collisions = true
+			s.collision_vectors = append(s.collision_vectors, dv)
 		}
 	}
 }
