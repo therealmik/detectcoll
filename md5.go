@@ -89,7 +89,7 @@ func (s *MD5) DetectSum(ret []byte) ([]byte, bool) {
 
 	var padding []byte
 
-	if len(t.buf) <= 56 {
+	if len(t.buf) < 56 {
 		padding = make([]byte, 64)
 	} else {
 		padding = make([]byte, 128)
