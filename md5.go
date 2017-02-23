@@ -89,7 +89,7 @@ func (s *MD5) DetectSum(ret []byte) ([]byte, bool) {
 
 	var padding []byte
 
-	if len(t.buf) <= 56 {
+	if len(t.buf) < 56 {
 		padding = make([]byte, 64)
 	} else {
 		padding = make([]byte, 128)
@@ -227,9 +227,6 @@ func (s *MD5) detect_collisions(orig_message_block *md5_mb, working_states []md5
 
 		ws := working_states[delta.round]
 		ws_msb := working_states[delta.round].add_msb()
-		for i := 0; i < 4; i++ {
-			ws_msb[i] += (1 << 31)
-		}
 
 		if delta.zero {
 			ihv := reapply_md5(delta.round, &message_block, &ws)
